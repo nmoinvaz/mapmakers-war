@@ -671,7 +671,7 @@ body[data-look="ink"] .sheet { box-shadow: 4px 4px 0 var(--ink); }
       <div class="choice"><h2>Shadow strength</h2><div id="s-shadow"><button data-v="full">Full</button><button data-v="light">Light</button><button data-v="off">Off</button></div></div>
       <div class="choice"><h2>Edge lines</h2><div id="s-edges" class="two"><button data-v="quick">Quick</button><button data-v="exact">Exact</button></div></div>
       <div class="choice"><h2>Music</h2><div id="s-music" class="two"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
-      <p id="build">Build b679f37 2026-11-12 19:44</p>
+      <p id="build">Build 8ce9096 2026-11-14 09:23</p>
       <p id="source"><a class="gh" href="https://github.com/nmoinvaz/mapmakers-war" target="_blank" rel="noopener" aria-label="Source on GitHub" title="Source on GitHub"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.06-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a></p>
     </div>
     <div id="banner" hidden></div>
@@ -17311,7 +17311,10 @@ const World = (() => {
       SH.uFogOn.value = was; cRT.dispose(); nRT.dispose(); iRT.dispose();
       // Each picture, once its pixels are back, turned upright, drawn down to the card's size, and encoded off the
       // page's own thread.
+      // A canvas's picture is taken when toBlob is called, so each is drawn and sent off in turn and all are encoded
+      // together.
       return (async () => {
+        const blobs = [];
         for (const [key, read] of jobs) {
           const pix = await read;
           if (!pix) continue;
@@ -17319,9 +17322,9 @@ const World = (() => {
           for (let y = 0; y < H; y++) im.data.set(pix.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
           bg.putImageData(im, 0, 0);
           og.clearRect(0, 0, oc.width, oc.height); og.drawImage(big, 0, 0, oc.width, oc.height);
-          const blob = await new Promise(r => oc.toBlob(r, 'image/png'));
-          if (blob) out[key] = URL.createObjectURL(blob);
+          blobs.push(new Promise(r => oc.toBlob(r, 'image/png')).then(blob => { if (blob) out[key] = URL.createObjectURL(blob); }));
         }
+        await Promise.all(blobs);
         return out;
       })();
     }
@@ -21896,7 +21899,7 @@ const Game = (() => {
       // A game begun while the title's map is still being drawn in is shown whole at once.
       world.drawIn(1, 1, 1); ovDraw = false; $('ov').style.opacity = '';
       begin(S, theme, team);
-      cameoDue = true; cameos();
+      cameoDue = true; cameos(CAMEO_BATCH);
       pictures();
       hud.reset();
       G.playing = true; G.paused = false; G.outcome = null; G.falls = {}; G.plate = null;
@@ -22233,9 +22236,11 @@ const Game = (() => {
     // the look's own inks, with the player's side on their markings.
     // A building's card shows it in the player's age, and G.picAge says which age that was.
     let renders = null, cameoList = null, cameoPart = null, cameoN = 0, cameoDue = false, cameoBusy = false;
-    // The engine's pictures are drawn once a world is loaded: a few a frame after the title is up, and any left all
-    // at once as a game begins. Their pixels come back a frame or two after they are drawn, so one batch is out at a
-    // time, and the cards take them when all are in.
+    // The engine's pictures are drawn once a world is loaded: a few a frame after the title is up, and in a game the
+    // rest a few at a time, each batch as soon as the one before is in, so a slow machine's frames do not hold them up.
+    // Their pixels come back a little after they are drawn, so one batch is out at a time, and the cards take each
+    // batch's pictures as they come.
+    const CAMEO_BATCH = 4;
     function cameos(n = Infinity) {
       if (renders || !G.S || !cameoList || cameoBusy) return;
       cameoPart = cameoPart || {};
@@ -22244,16 +22249,19 @@ const Game = (() => {
       world.cameos(batch, 0).then(o => {
         cameoBusy = false;
         Object.assign(cameoPart, o);
-        if (cameoN >= cameoList.length) { renders = cameoPart; cameoPart = null; pictures(); }
-      });
+        if (cameoN >= cameoList.length) { renders = cameoPart; cameoPart = null; }
+        pictures();
+        if (!renders && G.playing) setTimeout(() => cameos(CAMEO_BATCH), 0);
+      }, () => { cameoBusy = false; });
     }
     function pictures() {
-      if (!renders) return;
+      const R = renders || cameoPart;
+      if (!R) return;
       const scheme = world.look !== 'ink' ? 'daylight' : document.body.dataset.scheme === 'dark' ? 'dark' : 'light';
       const P = G.S && G.S.P[Math.max(0, G.team || 0)], age = P ? P.tech : 5, own = {}, base = {};
       // Each drawing on the paper it was inked for: the dark paper's where one was made, else the light's.
-      const pic = k => (scheme === 'dark' && renders[k + '|dark']) || renders[k];
-      for (const k in renders) if (!k.endsWith('|dark')) base[k] = pic(k);
+      const pic = k => (scheme === 'dark' && R[k + '|dark']) || R[k];
+      for (const k in R) if (!k.endsWith('|dark')) base[k] = pic(k);
       for (const k in Rules.BUILDINGS) own[k] = pic(world.ageKey(k, age)) || pic(k);
       G.picAge = age;
       hud.setCameos(Object.assign({}, base, own, Axo.pictures(scheme, SLOT_CSS[Math.max(0, G.team || 0)])));
