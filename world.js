@@ -4986,7 +4986,10 @@ const World = (() => {
       SH.uFogOn.value = was; cRT.dispose(); nRT.dispose(); iRT.dispose();
       // Each picture, once its pixels are back, turned upright, drawn down to the card's size, and encoded off the
       // page's own thread.
+      // A canvas's picture is taken when toBlob is called, so each is drawn and sent off in turn and all are encoded
+      // together.
       return (async () => {
+        const blobs = [];
         for (const [key, read] of jobs) {
           const pix = await read;
           if (!pix) continue;
@@ -4994,9 +4997,9 @@ const World = (() => {
           for (let y = 0; y < H; y++) im.data.set(pix.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
           bg.putImageData(im, 0, 0);
           og.clearRect(0, 0, oc.width, oc.height); og.drawImage(big, 0, 0, oc.width, oc.height);
-          const blob = await new Promise(r => oc.toBlob(r, 'image/png'));
-          if (blob) out[key] = URL.createObjectURL(blob);
+          blobs.push(new Promise(r => oc.toBlob(r, 'image/png')).then(blob => { if (blob) out[key] = URL.createObjectURL(blob); }));
         }
+        await Promise.all(blobs);
         return out;
       })();
     }

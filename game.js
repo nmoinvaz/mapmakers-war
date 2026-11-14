@@ -355,7 +355,7 @@ const Game = (() => {
       // A game begun while the title's map is still being drawn in is shown whole at once.
       world.drawIn(1, 1, 1); ovDraw = false; $('ov').style.opacity = '';
       begin(S, theme, team);
-      cameoDue = true; cameos();
+      cameoDue = true; cameos(CAMEO_BATCH);
       pictures();
       hud.reset();
       G.playing = true; G.paused = false; G.outcome = null; G.falls = {}; G.plate = null;
@@ -692,9 +692,11 @@ const Game = (() => {
     // the look's own inks, with the player's side on their markings.
     // A building's card shows it in the player's age, and G.picAge says which age that was.
     let renders = null, cameoList = null, cameoPart = null, cameoN = 0, cameoDue = false, cameoBusy = false;
-    // The engine's pictures are drawn once a world is loaded: a few a frame after the title is up, and any left all
-    // at once as a game begins. Their pixels come back a frame or two after they are drawn, so one batch is out at a
-    // time, and the cards take them when all are in.
+    // The engine's pictures are drawn once a world is loaded: a few a frame after the title is up, and in a game the
+    // rest a few at a time, each batch as soon as the one before is in, so a slow machine's frames do not hold them up.
+    // Their pixels come back a little after they are drawn, so one batch is out at a time, and the cards take each
+    // batch's pictures as they come.
+    const CAMEO_BATCH = 4;
     function cameos(n = Infinity) {
       if (renders || !G.S || !cameoList || cameoBusy) return;
       cameoPart = cameoPart || {};
@@ -703,16 +705,19 @@ const Game = (() => {
       world.cameos(batch, 0).then(o => {
         cameoBusy = false;
         Object.assign(cameoPart, o);
-        if (cameoN >= cameoList.length) { renders = cameoPart; cameoPart = null; pictures(); }
-      });
+        if (cameoN >= cameoList.length) { renders = cameoPart; cameoPart = null; }
+        pictures();
+        if (!renders && G.playing) setTimeout(() => cameos(CAMEO_BATCH), 0);
+      }, () => { cameoBusy = false; });
     }
     function pictures() {
-      if (!renders) return;
+      const R = renders || cameoPart;
+      if (!R) return;
       const scheme = world.look !== 'ink' ? 'daylight' : document.body.dataset.scheme === 'dark' ? 'dark' : 'light';
       const P = G.S && G.S.P[Math.max(0, G.team || 0)], age = P ? P.tech : 5, own = {}, base = {};
       // Each drawing on the paper it was inked for: the dark paper's where one was made, else the light's.
-      const pic = k => (scheme === 'dark' && renders[k + '|dark']) || renders[k];
-      for (const k in renders) if (!k.endsWith('|dark')) base[k] = pic(k);
+      const pic = k => (scheme === 'dark' && R[k + '|dark']) || R[k];
+      for (const k in R) if (!k.endsWith('|dark')) base[k] = pic(k);
       for (const k in Rules.BUILDINGS) own[k] = pic(world.ageKey(k, age)) || pic(k);
       G.picAge = age;
       hud.setCameos(Object.assign({}, base, own, Axo.pictures(scheme, SLOT_CSS[Math.max(0, G.team || 0)])));
