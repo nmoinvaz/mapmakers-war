@@ -609,7 +609,10 @@ body[data-look="ink"] #age-about, body[data-look="ink"] #map-about, body[data-lo
 .sheet footer { display: flex; align-items: center; gap: 8px; }
 #go-why { flex: 1; margin: 0; font: 500 16px/1.2 var(--ui); color: var(--ink-dim); }
 .sheet #deploy { min-width: 190px; }
-.sheet #ready.on { background: var(--good); border-color: var(--ink); color: var(--paper-hi); }
+/* A guest's Ready asks to be pressed until it is, then stands lit. */
+.sheet #ready { min-width: 190px; background: var(--redink); color: var(--paper-hi); }
+.sheet #ready:hover { filter: brightness(1.06); background: var(--redink); }
+.sheet #ready.on, .sheet #ready.on:hover { background: var(--good); border-color: var(--ink); color: var(--paper-hi); }
 .menu .big { display: grid; gap: 8px; }
 .menu .big button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 18px; font: 30px/1 var(--display); color: var(--ink); background: var(--paper-hi); border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); text-align: left; }
 .menu .big button small { font: 500 16px var(--ui); color: var(--ink-dim); letter-spacing: 0; }
@@ -757,7 +760,7 @@ body[data-look="ink"] .sheet { box-shadow: 4px 4px 0 var(--ink); }
             <p id="win-about"></p>
         </section>
       </div>
-      <footer><p id="go-why"></p><button id="ready" hidden>Ready</button><button id="deploy">Start</button></footer>
+      <footer><p id="go-why"></p><button id="ready" hidden>I'm ready</button><button id="deploy">Start</button></footer>
     </div>
 
     <div id="t-rooms" class="sheet" hidden>

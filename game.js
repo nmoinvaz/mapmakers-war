@@ -993,20 +993,33 @@ const Game = (() => {
       $('watchers').textContent = room && v.watch.length ? 'Watching: ' + v.watch.join(', ') : room && v.you < 0 ? 'You are watching. Sit in an open seat to play.' : '';
       $('chat').hidden = !room;
       // The way forward.
-      const sides = v.slots.filter(s => s.kind === 'human' || s.kind === 'ai').length, waiting = v.slots.filter(s => s.kind === 'human' && !s.host && !s.ready).length;
+      const sides = v.slots.filter(s => s.kind === 'human' || s.kind === 'ai').length, open = v.slots.some(s => s.kind === 'open');
+      // Who the room waits on, by name, the player reading it as "you".
+      const waiters = v.slots.map((s, i) => [s, i]).filter(([s]) => s.kind === 'human' && !s.host && !s.ready).map(([s, i]) => room && i === v.you ? 'you' : s.name || 'Commander');
+      const others = waiters.filter(n => n !== 'you');
+      const names = n => n.length < 2 ? n.join('') : n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1];
       let why = '', can = true;
       if (sides < 2) { why = 'A game needs at least two sides. Add a computer or open a seat.'; can = false; }
-      else if (room && waiting) { why = waiting === 1 ? 'Waiting for one player to be ready.' : `Waiting for ${waiting} players to be ready.`; can = false; }
+      else if (room && waiters.length) { why = `Waiting for ${names(waiters)} to press I'm ready.`; can = false; }
       const go = $('deploy'), ready = $('ready');
       ready.hidden = true; go.hidden = false;
       if (!room) { go.textContent = 'Start'; go.disabled = !can; }
       else if (v.phase === 'game') { go.hidden = true; why = 'This game is under way.'; }
       else if (v.phase === 'over') { go.textContent = 'New game'; go.hidden = !v.host; go.disabled = false; why = v.host ? 'The game is over. Set up the next one.' : 'The game is over. The host sets up the next one.'; }
-      else if (v.host) { go.textContent = 'Start'; go.disabled = !can; }
+      else if (v.host) {
+        go.textContent = 'Start'; go.disabled = !can;
+        // A room starts with the players it has, and its open seats stay empty.
+        if (can && open) why = 'Everyone is ready. Open seats stay empty when the game starts.';
+      }
       else {
         go.hidden = true;
-        if (v.you >= 0) { ready.hidden = false; const on = v.slots[v.you].ready; ready.classList.toggle('on', on); ready.textContent = on ? 'Ready' : 'Not ready'; }
-        why = why || 'The host starts the game once everyone is ready.';
+        if (v.you >= 0) {
+          const on = !!v.slots[v.you].ready;
+          ready.hidden = false; ready.classList.toggle('on', on);
+          ready.textContent = on ? 'Ready ✓' : "I'm ready";
+          ready.title = on ? 'Press to take it back' : 'Tell the host you are set to play';
+          why = !on ? "Press I'm ready when you are set to play." : others.length ? `You're ready. Waiting for ${names(others)}.` : "You're ready. Waiting for the host to start.";
+        } else why = why || 'The host starts the game once everyone is ready.';
       }
       $('go-why').textContent = why;
       fitSheet();
