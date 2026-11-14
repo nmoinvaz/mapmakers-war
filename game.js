@@ -293,10 +293,15 @@ const Game = (() => {
     window.addEventListener('resize', fit);
     new ResizeObserver(fit).observe(view);
 
+    // Set while a new map's programs are compiled, to the latest such compile.
+    let preparing = 0;
     function begin(S, theme, team) {
       G.S = S; G.team = team;
       world.load(S, theme, team);
       fit();
+      // The new map's programs are compiled before it is drawn, without holding the page, as at loading.
+      const n = ++preparing;
+      world.prepare(60000).then(() => { if (preparing === n) preparing = 0; });
     }
     // The camera over a slot's own base, looking toward the middle of the map.
     function home(S, team, d = 92) {
@@ -639,6 +644,8 @@ const Game = (() => {
       const t0 = performance.now(), dt = Math.min(0.1, (now - last) / 1000 || 0.016), gap = (now - last) / 1000;
       last = now;
       if (fitDue) applyFit();
+      // The game waits, undrawn, while a new map's programs are compiled.
+      if (preparing) return;
       const S = G.S;
       if (S && G.online) {
         // Steps as they come from the server, keeping a step or two in hand, and catching up when behind.
