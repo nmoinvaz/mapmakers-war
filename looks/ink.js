@@ -1462,6 +1462,8 @@
         float L(vec2 uv) { return dot(texture2D(t, uv).rgb, vec3(0.299, 0.587, 0.114)); }
         void main() { gl_FragColor = vec4(texture2D(t, vUv).rgb, (L(vUv) * 2.0 + L(vUv + k * vec2(2.5, 0)) + L(vUv - k * vec2(2.5, 0)) + L(vUv + k * vec2(0, 2.5)) + L(vUv - k * vec2(0, 2.5))) / 6.0); }` });
       let lumRT = null, lumOn = null;
+      // The ink pass compiled to read the quick edge lines' pass, or to work the average out itself.
+      const lumSet = quick => { if (quick !== lumOn) { lumOn = quick; ink.defines = ink.defines || {}; if (quick) ink.defines.LUM_PASS = 1; else delete ink.defines.LUM_PASS; ink.needsUpdate = true; } };
       let sides = false;
       const setSides = C => {
         World.SLOT_COLORS.forEach((hex, i) => {
@@ -1474,6 +1476,8 @@
         sides = true;
       };
       return {
+        // Its programs as the options set them, to be compiled ahead of the first frame.
+        materials(K) { lumSet(!!K.opts.lum); return [ink, lumMat]; },
         render(K) {
           const C = ink.uniforms, { w, h, camera, sky } = K, [CX, CY] = K.center;
           if (!C.tPaper.value) C.tPaper.value = K.paper();
@@ -1507,9 +1511,9 @@
           C.uNight.value = sky.night; C.uDayMul.value.set(...sky.mul); C.uDayAdd.value.set(...sky.add);
           C.uWaterL.value = K.waterLevel; C.uWindS.value.set(sky.windS, 0);
           C.uMe.value = Math.max(0, K.viewTeam); C.uView.value.set(Math.cos(K.cam.yaw), Math.sin(K.cam.yaw)); C.uHSize.value.set(Rules.VW, Rules.VH); C.uHScale.value = Rules.RES;
-          // The quick edge lines' pass, and the ink pass compiled to read it, or to work the average out itself.
+          // The quick edge lines' pass.
           const quick = !!K.opts.lum;
-          if (quick !== lumOn) { lumOn = quick; ink.defines = ink.defines || {}; if (quick) ink.defines.LUM_PASS = 1; else delete ink.defines.LUM_PASS; ink.needsUpdate = true; }
+          lumSet(quick);
           if (quick) {
             if (!lumRT || lumRT.width !== w || lumRT.height !== h) { if (lumRT) lumRT.dispose(); lumRT = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false }); }
             lumMat.uniforms.t.value = K.ldr.texture; lumMat.uniforms.k.value.set(C.uK.value / w, C.uK.value / h);

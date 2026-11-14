@@ -64,6 +64,8 @@
           gl_FragColor = vec4(col, 1.0);
         }` });
       return {
+        // Its programs, to be compiled ahead of the first frame.
+        materials: () => [charcoal],
         render(K) {
           const C = charcoal.uniforms;
           if (!C.tPaper.value) C.tPaper.value = K.paper();

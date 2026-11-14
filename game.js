@@ -1429,6 +1429,13 @@ const Game = (() => {
       G.pictures = pictures;
       if (!restore()) { $('view').classList.add('dawn'); attract(); screen('main'); }
       loaded(0.84); await breathe();
+      // The programs the first frame draws with are compiled first, without holding the page, so a slow graphics card
+      // takes its time behind the loading bar and the page stays answering. A note says so if it is slow.
+      fit(); applyFit();
+      const slowInk = setTimeout(() => { if (!document.body.classList.contains('ready')) $('loading-note').textContent = 'Inking the map. A slower graphics card takes a little while.'; }, 3000);
+      await world.prepare(120000, f => loaded(0.84 + 0.08 * f));
+      clearTimeout(slowInk);
+      loaded(0.92); await breathe();
       if (store.get(ROOM, '') && !G.playing && /^https?:$/.test(location.protocol)) rejoining(true);
       $('callsign').value = G.name;
       probe();

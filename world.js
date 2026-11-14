@@ -635,7 +635,70 @@ const World = (() => {
       }
       // The buffers made again at their size, as when a look that wants multisampling takes over from one that does not.
       const remake = () => { if (rt) size(w, h, cw, ch, aa); };
-      return { size, render, grade, remake };
+      // Every program a frame draws with, started without being used: the scene's own materials, the passes over the
+      // picture and the look's, and the materials drawn over the scene in its place, the line passes and the shadows'
+      // depth, each on a stand-in for every kind of thing the scene holds. A program is made for where it draws, a
+      // buffer or the canvas, and for the lights its pass's camera layer sees, so each pass is compiled with its own
+      // target, layer and lights.
+      function compile() {
+        if (!rt) return;
+        if (style.create && !painters.has(style.name)) painters.set(style.name, style.create(K));
+        const look = style.create && painters.get(style.name).materials ? painters.get(style.name).materials(K) : [];
+        const keep = renderer.getRenderTarget(), main = camera.layers.mask;
+        const at = (target, mask, s, cm = camera, lights = scene) => { renderer.setRenderTarget(target); camera.layers.mask = mask; renderer.compile(s, cm, lights); };
+        const quads = (target, mats) => { for (const m of mats) { const s = new THREE.Scene(); s.add(new THREE.Mesh(quad.geometry, m)); at(target, main, s, qc, s); } };
+        // A stand-in for each kind of mesh a pass draws, on that pass's layer, with the material the pass gives it.
+        const test = new THREE.Layers();
+        function standIns(root, layer, pick) {
+          const s = new THREE.Scene(), seen = new Set();
+          if (layer >= 0) test.set(layer);
+          root.traverse(o => {
+            if (!o.isMesh || !o.geometry || !o.material || (layer >= 0 && !o.layers.test(test))) return;
+            const m = pick(o);
+            if (!m) return;
+            const c = o.geometry.attributes.color;
+            const k = `${[].concat(m).map(x => x.uuid)}:${!!o.isInstancedMesh}:${!!o.instanceColor}:${c ? c.itemSize : 0}:${Object.keys(o.geometry.morphAttributes).length}`;
+            if (seen.has(k)) return;
+            seen.add(k);
+            const p = o.isInstancedMesh ? new THREE.InstancedMesh(o.geometry, m, 1) : new THREE.Mesh(o.geometry, m);
+            if (o.instanceColor) p.instanceColor = o.instanceColor;
+            s.add(p);
+          });
+          return s;
+        }
+        // The shadow map's own depth material for a caster, as three.js chooses it, one for each set of its settings.
+        const flip = { [THREE.FrontSide]: THREE.BackSide, [THREE.BackSide]: THREE.FrontSide, [THREE.DoubleSide]: THREE.DoubleSide }, depths = new Map();
+        const depth = o => {
+          if (!o.castShadow) return null;
+          if (o.customDepthMaterial) return o.customDepthMaterial;
+          // The shared depth material takes the caster's side, map and alpha test, each of which makes its own program.
+          const m = [].concat(o.material)[0], side = m.shadowSide != null ? m.shadowSide : flip[m.side];
+          const map = m.map || null, alphaMap = m.alphaMap || null, displacementMap = m.displacementMap || null, alphaTest = m.alphaTest || 0;
+          const k = `${side}:${!!map}:${!!alphaMap}:${alphaTest > 0}:${!!displacementMap}`;
+          if (!depths.has(k)) depths.set(k, new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side, map, alphaMap, alphaTest, displacementMap }));
+          return depths.get(k);
+        };
+        const own = o => o.material;
+        // The scene with its own materials, as the frame draws them.
+        at(rt, main, scene, camera, null);
+        // three.js draws the shadow map before it sets up a pass's lights, so the depth programs take the lights of
+        // the scene's pass before, the last of the frame before. That is the shadow pass's sun alone where shadows are
+        // hatched, and the scene's own lights otherwise.
+        for (const mask of [main, 1 << 3]) at(rt, mask, standIns(scene, -1, depth));
+        // The passes drawn over the scene on a layer of their own: the lines, the fire and smoke, the cast shadows.
+        for (const m of [markMat, normMat, anchorMat, linesMat].filter(Boolean)) at(rt, 1 << 1, standIns(scene, 1, () => m));
+        at(rt, 1 << 2, standIns(scene, 2, own));
+        at(rt, 1 << 3, standIns(scene, 3, () => shadowMat));
+        // The land alone, drawn as a scene of its own with no lights.
+        if (terrainMesh) for (const m of [fogPassMat, landMat]) { const s = standIns(terrainMesh, -1, () => m); at(rt, main, s, camera, s); }
+        // The passes over the picture, into the buffers they write. The last ones draw onto the canvas or into a picture
+        // larger than it, as the window's size and zoom quality decide, so they are made for both.
+        quads(rt, [bright, blur, ...look.slice(1)]);
+        for (const target of [rt, null]) quads(target, [grade, ...look.slice(0, 1), shrink, smoothE]);
+        renderer.setRenderTarget(keep);
+        camera.layers.mask = main;
+      }
+      return { size, render, grade, remake, compile };
     })();
 
     // Particle tiles, drawn once: smoke, fire, a glow, a spark, a ring, a shard.
@@ -4923,6 +4986,41 @@ const World = (() => {
       cameoKit = { flat, ink, qs, qc };
       return cameoKit;
     }
+    // The sidebar pictures' programs, started as the field's are: the flat pass on a model of each kind of colouring
+    // the models have, and the inking over them, both into buffers.
+    function compileCameos() {
+      const K = cameoTools(), keep = renderer.getRenderTarget(), t = new THREE.WebGLRenderTarget(4, 4), s = new THREE.Scene(), seen = new Set();
+      for (const set of [MODELS.units, MODELS.buildings, MODELS.man]) for (const parts of Object.values(set)) for (const p of parts) {
+        const c = p && p.geo && p.geo.attributes.color, k = c ? c.itemSize : 0;
+        if (!p || !p.geo || seen.has(k)) continue;
+        seen.add(k);
+        const m = new THREE.InstancedMesh(p.geo, K.flat, 1); m.setColorAt(0, teamCol[0]); s.add(m);
+      }
+      renderer.setRenderTarget(t);
+      renderer.compile(s, K.qc); renderer.compile(K.qs, K.qc);
+      renderer.setRenderTarget(keep);
+      t.dispose();
+    }
+    // The programs started, then taken up one by one without holding the page, so a slow graphics driver is not taken
+    // for a hung page. Where the browser compiles aside, a program is taken up once it says it is linked, and costs
+    // nothing then. Elsewhere taking one up waits on its own compile only, and the page is let go before the next.
+    // `step` hears the share taken up so far. Resolves when all are, or after `limit` ms.
+    function prepare(limit = 120000, step = () => {}) {
+      // The placement cells are made on the first frame otherwise.
+      updateGhost();
+      pp.compile(); compileCameos();
+      const ps = renderer.info.programs.slice(), t0 = performance.now();
+      let i = 0;
+      return new Promise(done => {
+        const tick = () => {
+          const t1 = performance.now();
+          while (i < ps.length && ps[i].isReady() && performance.now() - t1 < 8) ps[i++].getUniforms();
+          step(i / Math.max(1, ps.length));
+          if (i >= ps.length || performance.now() - t0 > limit) done(); else setTimeout(tick, 16);
+        };
+        tick();
+      });
+    }
     function cameos(list, team, w = 132, h = 88) {
       const K = cameoTools(), W = w * CAMEO_SS, H = h * CAMEO_SS;
       const opts = { type: THREE.UnsignedByteType, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter };
@@ -5086,6 +5184,8 @@ const World = (() => {
       get look() { return style.name; },
       get style() { return style; },
       cam, vw: 1, vh: 1, onScreen: [], load, frame, event, resize, reshape, pick, project, setGhost, cameos, renderer, camera, scene, place: placeCamera,
+      // The programs the frames draw with, compiled without holding the page; see prepare.
+      prepare,
       teamCol, THEMES,
       // A building's model key in an age, and every building model's key, for the sidebar's pictures.
       ageKey, buildingKeys: Object.keys(MODELS.buildings),
