@@ -684,7 +684,24 @@ const Game = (() => {
       for (const id of ['t-main', 't-setup', 't-rooms']) $(id).hidden = id !== 't-' + name;
       $('title').classList.toggle('on-sheet', name !== 'main');
       if (name === 'rooms') pollRooms(); else stopPolling();
+      fitSheet();
     }
+    // The set-up is drawn whole at its own size and shrunk to the window where it must be, so nothing on it scrolls.
+    // Where it would shrink past reading, it keeps the narrower layout, whose middle scrolls.
+    const SHEET_MIN = 0.72;
+    function fitSheet() {
+      const sh = $('t-setup'), box = $('title');
+      box.classList.remove('fitted'); sh.classList.remove('fit'); sh.style.zoom = '';
+      if (sh.hidden) return;
+      box.classList.add('fitted'); sh.classList.add('fit');
+      const cs = getComputedStyle(box), r = sh.getBoundingClientRect();
+      const aw = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), ah = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const s = Math.min(1, aw / r.width, ah / r.height);
+      if (s < SHEET_MIN) { box.classList.remove('fitted'); sh.classList.remove('fit'); return; }
+      if (s < 1) sh.style.zoom = s.toFixed(4);
+    }
+    window.addEventListener('resize', fitSheet);
+    if (document.fonts) document.fonts.ready.then(fitSheet);
 
     try { G.name = store.get('dg-name', ''); G.look = store.get('dg-look', G.look); G.look = { film: 'daylight', charcoal: 'ink', hudson: 'ink', hills: 'ink' }[G.look] || G.look; G.showHints = !store.get('dg-played'); } catch (e) { /* no store */ }
     if (params.get('look')) G.look = params.get('look');
@@ -992,6 +1009,7 @@ const Game = (() => {
         why = why || 'The host starts the game once everyone is ready.';
       }
       $('go-why').textContent = why;
+      fitSheet();
     }
     function button(text, fn) { const b = document.createElement('button'); b.textContent = text; b.addEventListener('click', () => { audio.ui('click'); fn(); }); return b; }
     // A change to the set-up: made here for a skirmish, asked of the server in a room.
