@@ -545,16 +545,28 @@ body[data-look="ink"] #menu, body[data-look="ink"] #watch, body[data-look="ink"]
 .cols, .rooms-wrap { flex: 0 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 /* The map's list, its picture and the players. Wide, each has a column, and the sheet is as tall as the players'
    column. Narrower, the picture goes under the list. */
-.cols { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; grid-template-areas: "maps slots" "view slots"; column-gap: 24px; align-items: start; }
+.cols { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; grid-template-areas: "maps slots" "view rules"; column-gap: 24px; align-items: start; }
 .mapcol { grid-area: maps; }
 .viewcol { grid-area: view; }
 .slotcol { grid-area: slots; }
+.rules { grid-area: rules; }
 @media (min-width: 1240px) {
   #t-setup { width: min(1200px, 100%); }
-  .cols { grid-template-columns: 330px 300px 1fr; grid-template-areas: "maps view slots"; }
+  .cols { grid-template-columns: 330px 300px 1fr; grid-template-areas: "maps view slots" "maps view rules"; }
   .viewcol { padding-top: 21px; }
   .viewcol .preview { margin-top: 0; }
 }
+/* Fitted: the set-up drawn whole at its own size, in four columns of the map, its picture, the game's rules and the
+   players, and shrunk as a whole to the window where it must be, so nothing on it scrolls. */
+#t-setup.fit { flex: none; width: 1180px; max-height: none; }
+#title.on-sheet.fitted { padding: 12px; }
+#t-setup.fit .cols { overflow: visible; grid-template-columns: 262px 250px 282px 1fr; grid-template-areas: "maps view rules slots"; grid-template-rows: auto; column-gap: 20px; }
+#t-setup.fit .viewcol { padding-top: 21px; }
+#t-setup.fit .viewcol .preview { margin-top: 0; }
+#t-setup.fit .rules { margin-top: 0; }
+#t-setup.fit .rules h3:first-child { margin-top: 0; }
+#t-setup.fit #m-age { grid-template-columns: repeat(3, 1fr); }
+#t-setup.fit #chat-log { height: 120px; }
 .pick { display: grid; gap: 4px; }
 .pick.three { grid-template-columns: repeat(3, 1fr); }
 .pick.three button { padding: 4px 2px; }
@@ -602,7 +614,10 @@ body[data-look="ink"] #age-about, body[data-look="ink"] #map-about, body[data-lo
 .sheet footer { display: flex; align-items: center; gap: 8px; }
 #go-why { flex: 1; margin: 0; font: 500 16px/1.2 var(--ui); color: var(--ink-dim); }
 .sheet #deploy { min-width: 190px; }
-.sheet #ready.on { background: var(--good); border-color: var(--ink); color: var(--paper-hi); }
+/* A guest's Ready asks to be pressed until it is, then stands lit. */
+.sheet #ready { min-width: 190px; background: var(--redink); color: var(--paper-hi); }
+.sheet #ready:hover { filter: brightness(1.06); background: var(--redink); }
+.sheet #ready.on, .sheet #ready.on:hover { background: var(--good); border-color: var(--ink); color: var(--paper-hi); }
 .menu .big { display: grid; gap: 8px; }
 .menu .big button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 12px 18px; font: 30px/1 var(--display); color: var(--ink); background: var(--paper-hi); border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); text-align: left; }
 .menu .big button small { font: 500 16px var(--ui); color: var(--ink-dim); letter-spacing: 0; }
@@ -621,7 +636,7 @@ body[data-look="ink"] #age-about, body[data-look="ink"] #map-about, body[data-lo
 #rooms td:last-child { text-align: right; }
 #rooms-none { margin: 10px 0 0; font: 500 16px var(--ui); color: var(--ink-dim); }
 @media (max-width: 760px) {
-  .cols { grid-template-columns: 1fr; grid-template-areas: "maps" "view" "slots"; }
+  .cols { grid-template-columns: 1fr; grid-template-areas: "maps" "view" "slots" "rules"; }
   .sheet { padding: 12px; gap: 10px; }
   #title.on-sheet { padding: 6px; align-items: stretch; }
   .sheet footer { flex-wrap: wrap; }
@@ -671,7 +686,7 @@ body[data-look="ink"] .sheet { box-shadow: 4px 4px 0 var(--ink); }
       <div class="choice"><h2>Shadow strength</h2><div id="s-shadow"><button data-v="full">Full</button><button data-v="light">Light</button><button data-v="off">Off</button></div></div>
       <div class="choice"><h2>Edge lines</h2><div id="s-edges" class="two"><button data-v="quick">Quick</button><button data-v="exact">Exact</button></div></div>
       <div class="choice"><h2>Music</h2><div id="s-music" class="two"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
-      <p id="build">Build 4bac862 2026-11-14 14:13</p>
+      <p id="build">Build 1c956b7 2026-11-14 14:45</p>
       <p id="source"><a class="gh" href="https://github.com/nmoinvaz/mapmakers-war" target="_blank" rel="noopener" aria-label="Source on GitHub" title="Source on GitHub"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.06-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a></p>
     </div>
     <div id="banner" hidden></div>
@@ -733,7 +748,9 @@ body[data-look="ink"] .sheet { box-shadow: 4px 4px 0 var(--ink); }
           <h3>Players</h3>
           <ol id="slots"></ol>
           <p id="watchers"></p>
-          <div class="rules">
+          <div id="chat" hidden><div id="chat-log"></div><input id="chat-in" maxlength="200" placeholder="Say something, then Enter" autocomplete="off" spellcheck="false"></div>
+        </section>
+        <section class="rules">
             <h3>Theatre</h3>
             <div id="m-theme" class="pick three"><button data-v="desert">Salt Flats</button><button data-v="steppe">Black Steppe</button><button data-v="winter">White Pass</button></div>
             <h3>Starting age</h3>
@@ -748,11 +765,9 @@ body[data-look="ink"] .sheet { box-shadow: 4px 4px 0 var(--ink); }
             <h3>Victory</h3>
             <div id="m-win" class="pick three"><button data-v="conquest">Conquest</button><button data-v="regicide">Regicide</button><button data-v="koth">King of the Hill</button></div>
             <p id="win-about"></p>
-          </div>
-          <div id="chat" hidden><div id="chat-log"></div><input id="chat-in" maxlength="200" placeholder="Say something, then Enter" autocomplete="off" spellcheck="false"></div>
         </section>
       </div>
-      <footer><p id="go-why"></p><button id="ready" hidden>Ready</button><button id="deploy">Start</button></footer>
+      <footer><p id="go-why"></p><button id="ready" hidden>I'm ready</button><button id="deploy">Start</button></footer>
     </div>
 
     <div id="t-rooms" class="sheet" hidden>
@@ -22334,7 +22349,24 @@ const Game = (() => {
       for (const id of ['t-main', 't-setup', 't-rooms']) $(id).hidden = id !== 't-' + name;
       $('title').classList.toggle('on-sheet', name !== 'main');
       if (name === 'rooms') pollRooms(); else stopPolling();
+      fitSheet();
     }
+    // The set-up is drawn whole at its own size and shrunk to the window where it must be, so nothing on it scrolls.
+    // Where it would shrink past reading, it keeps the narrower layout, whose middle scrolls.
+    const SHEET_MIN = 0.72;
+    function fitSheet() {
+      const sh = $('t-setup'), box = $('title');
+      box.classList.remove('fitted'); sh.classList.remove('fit'); sh.style.zoom = '';
+      if (sh.hidden) return;
+      box.classList.add('fitted'); sh.classList.add('fit');
+      const cs = getComputedStyle(box), r = sh.getBoundingClientRect();
+      const aw = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), ah = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      const s = Math.min(1, aw / r.width, ah / r.height);
+      if (s < SHEET_MIN) { box.classList.remove('fitted'); sh.classList.remove('fit'); return; }
+      if (s < 1) sh.style.zoom = s.toFixed(4);
+    }
+    window.addEventListener('resize', fitSheet);
+    if (document.fonts) document.fonts.ready.then(fitSheet);
 
     try { G.name = store.get('dg-name', ''); G.look = store.get('dg-look', G.look); G.look = { film: 'daylight', charcoal: 'ink', hudson: 'ink', hills: 'ink' }[G.look] || G.look; G.showHints = !store.get('dg-played'); } catch (e) { /* no store */ }
     if (params.get('look')) G.look = params.get('look');
@@ -22626,22 +22658,36 @@ const Game = (() => {
       $('watchers').textContent = room && v.watch.length ? 'Watching: ' + v.watch.join(', ') : room && v.you < 0 ? 'You are watching. Sit in an open seat to play.' : '';
       $('chat').hidden = !room;
       // The way forward.
-      const sides = v.slots.filter(s => s.kind === 'human' || s.kind === 'ai').length, waiting = v.slots.filter(s => s.kind === 'human' && !s.host && !s.ready).length;
+      const sides = v.slots.filter(s => s.kind === 'human' || s.kind === 'ai').length, open = v.slots.some(s => s.kind === 'open');
+      // Who the room waits on, by name, the player reading it as "you".
+      const waiters = v.slots.map((s, i) => [s, i]).filter(([s]) => s.kind === 'human' && !s.host && !s.ready).map(([s, i]) => room && i === v.you ? 'you' : s.name || 'Commander');
+      const others = waiters.filter(n => n !== 'you');
+      const names = n => n.length < 2 ? n.join('') : n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1];
       let why = '', can = true;
       if (sides < 2) { why = 'A game needs at least two sides. Add a computer or open a seat.'; can = false; }
-      else if (room && waiting) { why = waiting === 1 ? 'Waiting for one player to be ready.' : `Waiting for ${waiting} players to be ready.`; can = false; }
+      else if (room && waiters.length) { why = `Waiting for ${names(waiters)} to press I'm ready.`; can = false; }
       const go = $('deploy'), ready = $('ready');
       ready.hidden = true; go.hidden = false;
       if (!room) { go.textContent = 'Start'; go.disabled = !can; }
       else if (v.phase === 'game') { go.hidden = true; why = 'This game is under way.'; }
       else if (v.phase === 'over') { go.textContent = 'New game'; go.hidden = !v.host; go.disabled = false; why = v.host ? 'The game is over. Set up the next one.' : 'The game is over. The host sets up the next one.'; }
-      else if (v.host) { go.textContent = 'Start'; go.disabled = !can; }
+      else if (v.host) {
+        go.textContent = 'Start'; go.disabled = !can;
+        // A room starts with the players it has, and its open seats stay empty.
+        if (can && open) why = 'Everyone is ready. Open seats stay empty when the game starts.';
+      }
       else {
         go.hidden = true;
-        if (v.you >= 0) { ready.hidden = false; const on = v.slots[v.you].ready; ready.classList.toggle('on', on); ready.textContent = on ? 'Ready' : 'Not ready'; }
-        why = why || 'The host starts the game once everyone is ready.';
+        if (v.you >= 0) {
+          const on = !!v.slots[v.you].ready;
+          ready.hidden = false; ready.classList.toggle('on', on);
+          ready.textContent = on ? 'Ready ✓' : "I'm ready";
+          ready.title = on ? 'Press to take it back' : 'Tell the host you are set to play';
+          why = !on ? "Press I'm ready when you are set to play." : others.length ? `You're ready. Waiting for ${names(others)}.` : "You're ready. Waiting for the host to start.";
+        } else why = why || 'The host starts the game once everyone is ready.';
       }
       $('go-why').textContent = why;
+      fitSheet();
     }
     function button(text, fn) { const b = document.createElement('button'); b.textContent = text; b.addEventListener('click', () => { audio.ui('click'); fn(); }); return b; }
     // A change to the set-up: made here for a skirmish, asked of the server in a room.
