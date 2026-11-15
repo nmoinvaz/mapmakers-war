@@ -686,7 +686,7 @@ body[data-look="ink"] .sheet { box-shadow: 4px 4px 0 var(--ink); }
       <div class="choice"><h2>Shadow strength</h2><div id="s-shadow"><button data-v="full">Full</button><button data-v="light">Light</button><button data-v="off">Off</button></div></div>
       <div class="choice"><h2>Edge lines</h2><div id="s-edges" class="two"><button data-v="quick">Quick</button><button data-v="exact">Exact</button></div></div>
       <div class="choice"><h2>Music</h2><div id="s-music" class="two"><button data-v="on">On</button><button data-v="off">Off</button></div></div>
-      <p id="build">Build c6b13e2 2026-11-15 08:33</p>
+      <p id="build">Build 6bd78ec 2026-11-15 08:53</p>
       <p id="source"><a class="gh" href="https://github.com/nmoinvaz/mapmakers-war" target="_blank" rel="noopener" aria-label="Source on GitHub" title="Source on GitHub"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.06-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a></p>
     </div>
     <div id="banner" hidden></div>
@@ -12435,6 +12435,9 @@ const World = (() => {
     for (const k in BUILDINGS) AGE_KEYS[k] = [0, 1, 2, 3, 4, 5, 6].map(a => MODELS.ageKey(k, a));
     const ageKey = (kind, age) => (AGE_KEYS[kind] && AGE_KEYS[kind][age]) || kind;
     const scene = new THREE.Scene();
+    // A frame draws the scene four times, and nothing moves between them, so its matrices are worked out once a frame
+    // and not again for each draw.
+    scene.matrixWorldAutoUpdate = false;
     const camera = new THREE.PerspectiveCamera(26, 1, 2, 500);
     const cam = { x: 40, y: 40, dist: 92, yaw: Math.PI / 4, pitch: 0.98, shake: 0, minD: 30, maxD: 190 };
 
@@ -12982,6 +12985,7 @@ const World = (() => {
         // A look that paints the fog of war itself has the scene drawn without it.
         const own = style.sceneFog === false && viewTeam >= 0;
         if (own) SH.uFogOn.value = 0;
+        scene.updateMatrixWorld();
         renderer.setRenderTarget(rt);
         renderer.render(scene, camera);
         if (own) SH.uFogOn.value = 1;
@@ -13041,7 +13045,8 @@ const World = (() => {
         const flip = { [THREE.FrontSide]: THREE.BackSide, [THREE.BackSide]: THREE.FrontSide, [THREE.DoubleSide]: THREE.DoubleSide }, depths = new Map();
         const depth = o => {
           if (!o.castShadow) return null;
-          if (o.customDepthMaterial) return o.customDepthMaterial;
+          // The instanced casters' shared depth material takes each caster's settings as three.js's own does.
+          if (o.customDepthMaterial && o.customDepthMaterial !== instDepth) return o.customDepthMaterial;
           // The shared depth material takes the caster's side, map and alpha test, each of which makes its own program.
           const m = [].concat(o.material)[0], side = m.shadowSide != null ? m.shadowSide : flip[m.side];
           const map = m.map || null, alphaMap = m.alphaMap || null, displacementMap = m.displacementMap || null, alphaTest = m.alphaTest || 0;
@@ -17388,9 +17393,20 @@ const World = (() => {
     // `step` hears the share taken up so far. Resolves when all are, or after `limit` ms.
     // The programs that need no map, started without being waited on, for the driver to compile while one is made.
     const warm = () => pp.passes();
+    // Instanced casters draw their shadows' depth with a material of their own. three.js's one depth material, shared
+    // with the plain casters, otherwise looks up its program again at each change between the two, many times a frame.
+    // A caster whose shadow a map, alpha map, displacement or clipping cuts keeps three.js's own material for it.
+    const instDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+    function splitDepth() {
+      scene.traverse(o => {
+        const m = o.isInstancedMesh && o.castShadow && !o.customDepthMaterial && !Array.isArray(o.material) && o.material;
+        if (m && !m.map && !m.alphaMap && !m.displacementMap && !m.clipShadows) o.customDepthMaterial = instDepth;
+      });
+    }
     function prepare(limit = 120000, step = () => {}) {
       // The placement cells are made on the first frame otherwise.
       updateGhost();
+      splitDepth();
       pp.compile(); compileCameos();
       const ps = renderer.info.programs.slice(), t0 = performance.now();
       let i = 0;
@@ -17516,6 +17532,7 @@ const World = (() => {
       const hidden = [];
       scene.traverse(o => { if ((o.isMesh || o.isPoints) && !keep.has(o) && o.visible) { o.visible = false; hidden.push(o); } });
       scene.overrideMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      scene.updateMatrixWorld();
       renderer.shadowMap.autoUpdate = false;
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, camera);
       const px = new Uint8Array(w * h * 4);
