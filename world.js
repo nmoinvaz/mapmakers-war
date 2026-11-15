@@ -645,11 +645,8 @@ const World = (() => {
       // target, layer and lights.
       function compile() {
         if (!rt) return;
-        if (style.create && !painters.has(style.name)) painters.set(style.name, style.create(K));
-        const look = style.create && painters.get(style.name).materials ? painters.get(style.name).materials(K) : [];
         const keep = renderer.getRenderTarget(), main = camera.layers.mask;
         const at = (target, mask, s, cm = camera, lights = scene) => { renderer.setRenderTarget(target); camera.layers.mask = mask; renderer.compile(s, cm, lights); };
-        const quads = (target, mats) => { for (const m of mats) { const s = new THREE.Scene(); s.add(new THREE.Mesh(quad.geometry, m)); at(target, main, s, qc, s); } };
         // A stand-in for each kind of mesh a pass draws, on that pass's layer, with the material the pass gives it.
         const test = new THREE.Layers();
         function standIns(root, layer, pick) {
@@ -694,13 +691,24 @@ const World = (() => {
         at(rt, 1 << 3, standIns(scene, 3, () => shadowMat));
         // The land alone, drawn as a scene of its own with no lights.
         if (terrainMesh) for (const m of [fogPassMat, landMat]) { const s = standIns(terrainMesh, -1, () => m); at(rt, main, s, camera, s); }
-        // The passes over the picture. The last ones draw onto the canvas or into a picture larger than it, as the
-        // window's size and zoom quality decide, and the canvas shares the buffers' programs.
-        quads(rt, [bright, blur, ...look, grade, shrink, smoothE]);
         renderer.setRenderTarget(keep);
         camera.layers.mask = main;
+        passes();
       }
-      return { size, render, grade, remake, compile };
+      // The passes over the picture and the look's. They need no map, so they may be started before one is made, and
+      // a driver compiling aside works on them, half of a start's compiling, while the page makes the map. The last
+      // ones draw onto the canvas or into a picture larger than it, as the window's size and zoom quality decide, and
+      // the canvas shares the buffers' programs.
+      function passes() {
+        if (!rt) return;
+        if (style.create && !painters.has(style.name)) painters.set(style.name, style.create(K));
+        const look = style.create && painters.get(style.name).materials ? painters.get(style.name).materials(K) : [];
+        const keep = renderer.getRenderTarget();
+        renderer.setRenderTarget(rt);
+        for (const m of [bright, blur, ...look, grade, shrink, smoothE]) { const s = new THREE.Scene(); s.add(new THREE.Mesh(quad.geometry, m)); renderer.compile(s, qc, s); }
+        renderer.setRenderTarget(keep);
+      }
+      return { size, render, grade, remake, compile, passes };
     })();
 
     // Particle tiles, drawn once: smoke, fire, a glow, a spark, a ring, a shard.
@@ -5007,6 +5015,8 @@ const World = (() => {
     // for a hung page. Where the browser compiles aside, a program is taken up once it says it is linked, and costs
     // nothing then. Elsewhere taking one up waits on its own compile only, and the page is let go before the next.
     // `step` hears the share taken up so far. Resolves when all are, or after `limit` ms.
+    // The programs that need no map, started without being waited on, for the driver to compile while one is made.
+    const warm = () => pp.passes();
     function prepare(limit = 120000, step = () => {}) {
       // The placement cells are made on the first frame otherwise.
       updateGhost();
@@ -5187,7 +5197,7 @@ const World = (() => {
       get style() { return style; },
       cam, vw: 1, vh: 1, onScreen: [], load, frame, event, resize, reshape, pick, project, setGhost, cameos, renderer, camera, scene, place: placeCamera,
       // The programs the frames draw with, compiled without holding the page; see prepare.
-      prepare,
+      prepare, warm,
       teamCol, THEMES,
       // A building's model key in an age, and every building model's key, for the sidebar's pictures.
       ageKey, buildingKeys: Object.keys(MODELS.buildings),

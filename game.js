@@ -1456,6 +1456,8 @@ const Game = (() => {
       loaded(0.62); await breathe();
       fit();
       applyScheme();
+      // The programs that need no map are started now, for the graphics driver to compile while the map is made.
+      applyFit(); world.warm();
       loaded(0.7); await breathe();
       cameoList = [
         ...Object.keys(Rules.BUILDINGS).filter(k => k !== 'hq').map(k => ({ kind: k, b: true })), { kind: 'hq', b: true },
