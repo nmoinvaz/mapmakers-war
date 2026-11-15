@@ -57,6 +57,8 @@ const World = (() => {
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // The shadow map is drawn when aimSun asks for it, not on every draw of the scene.
+    renderer.shadowMap.autoUpdate = false;
     renderer.info.autoReset = true;
     const MODELS = Models.make(THREE);
     // Each building's model in each age, by kind and then age, so a base is drawn in its owner's age.
@@ -530,9 +532,7 @@ const World = (() => {
         const was = camera.layers.mask;
         if (layer !== undefined) camera.layers.set(layer);
         scene.overrideMaterial = material;
-        renderer.shadowMap.autoUpdate = false;
         renderer.setRenderTarget(target); renderer.setClearColor(clear, alpha); renderer.clear(); renderer.render(scene, camera);
-        renderer.shadowMap.autoUpdate = shadowK > 0;
         scene.overrideMaterial = null; camera.layers.mask = was;
         renderer.setClearColor(theme ? theme.shroud : 0, 1);
         return target.texture;
@@ -544,11 +544,9 @@ const World = (() => {
         anchorRes.value.set(w, h);
         const was = camera.layers.mask, gl = renderer.getContext();
         camera.layers.set(1); scene.overrideMaterial = linesMat;
-        renderer.shadowMap.autoUpdate = false;
         renderer.setRenderTarget(linesRT); renderer.setClearColor(0x808080, 0); renderer.clear();
         gl.clearBufferfv(gl.COLOR, 0, NONE); gl.clearBufferfv(gl.COLOR, 2, NONE);
         renderer.render(scene, camera);
-        renderer.shadowMap.autoUpdate = shadowK > 0;
         scene.overrideMaterial = null; camera.layers.mask = was;
         renderer.setClearColor(theme ? theme.shroud : 0, 1);
         const [mask, norm, anchor] = linesRT.texture;
@@ -3452,6 +3450,7 @@ const World = (() => {
 
     function load(state, themeName, team) {
       clearWorld();
+      shadowDue = true;
       S = state; M = S.map; theme = THEMES[themeName] || THEMES.desert; viewTeam = team; iceSeen = -1; quarrySeen = 0;
       Rules.setSize(M.W);
       W = M.W; H = M.H; VW = Rules.VW; VH = Rules.VH; CX = W / 2; CY = H / 2;
@@ -4711,7 +4710,12 @@ const World = (() => {
     }
 
     // The sun's shadow camera over the view, snapped to its texels so the shadows hold still as the view pans.
-    const SHADOW_EL = Math.atan(0.5);
+    // The shadow map is drawn every other frame, as a moving thing's shadow a frame behind does not show and the map
+    // costs a fifth of a frame. Between, the last map is read through its own matrix, so still shadows stay put.
+    // It is drawn at once when asked for, as after a new map, and when the view has moved or zoomed further than the
+    // last map can cover.
+    const SHADOW_EL = Math.atan(0.5), shadowAt = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), sunX = new THREE.Vector3(), sunY = new THREE.Vector3();
+    let shadowTick = 0, shadowHalf = 0, shadowDue = true;
     function aimSun() {
       const c = cam, half = c.dist * 0.72;
       sun.target.position.set(c.x + Math.cos(c.yaw) * half * 0.15, 1, c.y + Math.sin(c.yaw) * half * 0.15);
@@ -4722,12 +4726,22 @@ const World = (() => {
       const el = Math.asin(clamp(dir.y, -1, 1)), hz = Math.hypot(dir.x, dir.z) || 1;
       SH.uCastK.value = smooth(0.1, 0.28, el) * shadowK * SH.uSubjK.value;
       if (el < SHADOW_EL) dir.set(dir.x / hz * Math.cos(SHADOW_EL), Math.sin(SHADOW_EL), dir.z / hz * Math.cos(SHADOW_EL));
-      const texel = half * 2 / sun.shadow.mapSize.x;
-      sun.target.position.x = Math.round(sun.target.position.x / texel) * texel;
-      sun.target.position.z = Math.round(sun.target.position.z / texel) * texel;
-      sun.position.copy(sun.target.position).addScaledVector(dir, 90);
+      // The target snapped to whole texels across the sun's own view, the axes the shadow camera's lookAt gives it, so
+      // a pan moves the map by whole texels and still things' shadows keep their edges.
+      const texel = half * 2 / sun.shadow.mapSize.x, t = sun.target.position;
+      sunX.crossVectors(UP, dir);
+      if (sunX.lengthSq() > 1e-8) {
+        sunX.normalize(); sunY.crossVectors(dir, sunX);
+        const a = t.dot(sunX), b = t.dot(sunY);
+        t.addScaledVector(sunX, Math.round(a / texel) * texel - a).addScaledVector(sunY, Math.round(b / texel) * texel - b);
+      } else { t.x = Math.round(t.x / texel) * texel; t.z = Math.round(t.z / texel) * texel; }
+      sun.position.copy(t).addScaledVector(dir, 90);
       const sc = sun.shadow.camera;
       sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half; sc.near = 10; sc.far = 190; sc.updateProjectionMatrix();
+      const far = sun.target.position.distanceTo(shadowAt) > half * 0.1 || Math.abs(half - shadowHalf) > half * 0.05;
+      const draw = shadowK > 0 && (shadowDue || far || !sun.shadow.map || (++shadowTick & 1) === 0);
+      if (draw) { shadowDue = false; shadowAt.copy(sun.target.position); shadowHalf = half; }
+      renderer.shadowMap.needsUpdate = draw;
     }
     // A plate of a moment, as a history book prints one: the view drawn once more over the place on light paper
     // with nothing hidden, read back small, the view put back as it was, and the picture engraved.
@@ -5166,11 +5180,13 @@ const World = (() => {
       scene.traverse(o => { if ((o.isMesh || o.isPoints) && !keep.has(o) && o.visible) { o.visible = false; hidden.push(o); } });
       scene.overrideMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
       scene.updateMatrixWorld();
-      renderer.shadowMap.autoUpdate = false;
+      // A shadow map asked for this frame is kept for the frame's own draw, not drawn from this partial scene.
+      const due = renderer.shadowMap.needsUpdate;
+      renderer.shadowMap.needsUpdate = false;
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, camera);
       const px = new Uint8Array(w * h * 4);
       renderer.readRenderTargetPixels(rt, 0, 0, w, h, px);
-      renderer.setRenderTarget(null); renderer.setClearColor(theme.shroud, 1); renderer.shadowMap.autoUpdate = shadowK > 0;
+      renderer.setRenderTarget(null); renderer.setClearColor(theme.shroud, 1); renderer.shadowMap.needsUpdate = due;
       scene.overrideMaterial = null;
       for (const o of hidden) o.visible = true;
       rt.dispose();
@@ -5204,7 +5220,7 @@ const World = (() => {
       // Shadows on the land drawn as pen hatching, or as a wash.
       setShadeHatch(on) { shadeHatch = !!on; },
       setQuickEdges(on) { lumPass = !!on; },
-      setShadowK(k) { shadowK = k; SH.uShadowK.value = k; renderer.shadowMap.autoUpdate = k > 0; renderer.shadowMap.needsUpdate = k > 0; },
+      setShadowK(k) { shadowK = k; SH.uShadowK.value = k; shadowDue = true; },
       // The map drawn in from bare paper: how far its land and its units and buildings are to go, 0 to 1, and with
       // from, where both start.
       drawIn(map, subj, from) { drawTo.map = map; drawTo.subj = subj; if (from !== undefined) { SH.uDraw.value = from; SH.uSubjK.value = from; } },
