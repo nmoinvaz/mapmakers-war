@@ -51,6 +51,9 @@ const World = (() => {
     const low = !!opt.low;
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: !!opt.keep });
     renderer.setClearColor(0x000000, 1);
+    // The passes drawn onto the canvas write their colours as they are, so the canvas takes the buffers' colour space.
+    // A pass then has one program for the canvas and the buffers, and the ink pass, the largest, is compiled once.
+    renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -691,10 +694,9 @@ const World = (() => {
         at(rt, 1 << 3, standIns(scene, 3, () => shadowMat));
         // The land alone, drawn as a scene of its own with no lights.
         if (terrainMesh) for (const m of [fogPassMat, landMat]) { const s = standIns(terrainMesh, -1, () => m); at(rt, main, s, camera, s); }
-        // The passes over the picture, into the buffers they write. The last ones draw onto the canvas or into a picture
-        // larger than it, as the window's size and zoom quality decide, so they are made for both.
-        quads(rt, [bright, blur, ...look.slice(1)]);
-        for (const target of [rt, null]) quads(target, [grade, ...look.slice(0, 1), shrink, smoothE]);
+        // The passes over the picture. The last ones draw onto the canvas or into a picture larger than it, as the
+        // window's size and zoom quality decide, and the canvas shares the buffers' programs.
+        quads(rt, [bright, blur, ...look, grade, shrink, smoothE]);
         renderer.setRenderTarget(keep);
         camera.layers.mask = main;
       }
