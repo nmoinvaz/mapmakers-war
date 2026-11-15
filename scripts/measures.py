@@ -28,7 +28,7 @@ def main(src, out):
     x, y, w, h = 230, top + 6, 520, 40 * n + 16
     xmap, ymap = axes(svg, x, y, w, h, (0, top_x), (-0.9, n - 0.5), data["unit"], "measure",
                       xfmt=lambda v: f"{v:g}", yfmt=lambda v: rows[n - 1 - int(v)] if 0 <= v < n and v == int(v) else "")
-    better_hint(svg, x, y, w, h, where="axis", label="faster", reverse=True)
+    better_hint(svg, x, y, w, h, where="axis", label=data.get("better", "faster"), reverse=True)
     for v in range(n):
         if v not in ymap.ticks():
             svg.text(x - 6, ymap(v) + 4, rows[n - 1 - v], size=11, anchor="end", tabular=True)
