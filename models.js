@@ -14,6 +14,14 @@ const Models = (() => {
   function make(THREE) {
     const col = new THREE.Color(), m4 = new THREE.Matrix4(), e = new THREE.Euler(), q = new THREE.Quaternion(), v = new THREE.Vector3(), s = new THREE.Vector3();
 
+    // A box, cylinder or ball's triangles without an index, made once for each set of its arguments, as the models
+    // ask for the same few thousand shapes over and over.
+    const prims = new Map();
+    const prim = (key, mk) => {
+      let g = prims.get(key);
+      if (!g) { g = mk(); if (g.index) g = g.toNonIndexed(); prims.set(key, g); }
+      return g;
+    };
     class Geo {
       constructor() { this.p = []; this.n = []; this.c = []; this.t = []; this.g = []; }
       // Adds a primitive placed at (x, y, z). o gives rx, ry, rz, sx, sy, sz, t (team) and g (glow).
@@ -24,24 +32,41 @@ const Models = (() => {
         m4.compose(v.set(x, y, z), q.setFromEuler(e), s.set(o.sx || 1, o.sy || 1, o.sz || 1));
         const nm = new THREE.Matrix3().getNormalMatrix(m4);
         col.set(hex);
-        const a = new THREE.Vector3(), b = new THREE.Vector3();
-        const t = o.t ?? 0, gl = o.g ?? 0;
-        for (let i = 0; i < pos.count; i++) {
-          a.fromBufferAttribute(pos, i).applyMatrix4(m4);
-          b.fromBufferAttribute(nor, i).applyMatrix3(nm).normalize();
-          this.p.push(a.x, a.y, a.z); this.n.push(b.x, b.y, b.z); this.c.push(col.r, col.g, col.b); this.t.push(t); this.g.push(gl);
+        const t = o.t ?? 0, gl = o.g ?? 0, cr = col.r, cg = col.g, cb = col.b;
+        const plain = a => !a.isInterleavedBufferAttribute && !a.normalized && a.itemSize === 3;
+        if (!plain(pos) || !plain(nor)) {
+          const a = new THREE.Vector3(), b = new THREE.Vector3();
+          for (let i = 0; i < pos.count; i++) {
+            a.fromBufferAttribute(pos, i).applyMatrix4(m4);
+            b.fromBufferAttribute(nor, i).applyMatrix3(nm).normalize();
+            this.p.push(a.x, a.y, a.z); this.n.push(b.x, b.y, b.z); this.c.push(cr, cg, cb); this.t.push(t); this.g.push(gl);
+          }
+          return this;
+        }
+        // The same sums, in the same order, as Vector3's applyMatrix4, applyMatrix3 and normalize, on the arrays.
+        const P = pos.array, N = nor.array, m = m4.elements, k = nm.elements;
+        for (let i = 0, j = 0; i < pos.count; i++, j += 3) {
+          const px = P[j], py = P[j + 1], pz = P[j + 2], w = 1 / (m[3] * px + m[7] * py + m[11] * pz + m[15]);
+          this.p.push((m[0] * px + m[4] * py + m[8] * pz + m[12]) * w, (m[1] * px + m[5] * py + m[9] * pz + m[13]) * w, (m[2] * px + m[6] * py + m[10] * pz + m[14]) * w);
+          const nx = N[j], ny = N[j + 1], nz = N[j + 2];
+          let bx = k[0] * nx + k[3] * ny + k[6] * nz, by = k[1] * nx + k[4] * ny + k[7] * nz, bz = k[2] * nx + k[5] * ny + k[8] * nz;
+          const d = 1 / (Math.sqrt(bx * bx + by * by + bz * bz) || 1);
+          bx *= d; by *= d; bz *= d;
+          this.n.push(bx, by, bz); this.c.push(cr, cg, cb); this.t.push(t); this.g.push(gl);
         }
         return this;
       }
-      box(w, h, d, x, y, z, c, o) { return this.add(new THREE.BoxGeometry(w, h, d), x, y + h / 2, z, c, o); }
+      box(w, h, d, x, y, z, c, o) { return this.add(prim(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d)), x, y + h / 2, z, c, o); }
       cyl(rt, rb, h, x, y, z, c, o = {}) {
-        const g = new THREE.CylinderGeometry(rt, rb, h, o.seg || 12, 1, o.open);
+        const seg = o.seg || 12, open = !!o.open;
+        const g = prim(`c${rt},${rb},${h},${seg},${open}`, () => new THREE.CylinderGeometry(rt, rb, h, seg, 1, open));
         const r = o.axis === 'x' ? { rz: Math.PI / 2 } : o.axis === 'z' ? { rx: Math.PI / 2 } : {};
         return this.add(g, x, y, z, c, Object.assign({}, o, r));
       }
       // A ball, or with o.top half a ball.
       sph(r, x, y, z, c, o = {}) {
-        const g = new THREE.SphereGeometry(r, o.seg || 12, o.rings || 8, 0, Math.PI * 2, 0, o.top ? Math.PI / 2 : Math.PI);
+        const seg = o.seg || 12, rings = o.rings || 8, top = !!o.top;
+        const g = prim(`s${r},${seg},${rings},${top}`, () => new THREE.SphereGeometry(r, seg, rings, 0, Math.PI * 2, 0, top ? Math.PI / 2 : Math.PI));
         return this.add(g, x, y, z, c, o);
       }
       // A polygon in the XY plane pushed along z, centred on z. Hull profiles and turret plans.
