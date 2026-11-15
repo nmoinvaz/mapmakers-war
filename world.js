@@ -64,6 +64,9 @@ const World = (() => {
     for (const k in BUILDINGS) AGE_KEYS[k] = [0, 1, 2, 3, 4, 5, 6].map(a => MODELS.ageKey(k, a));
     const ageKey = (kind, age) => (AGE_KEYS[kind] && AGE_KEYS[kind][age]) || kind;
     const scene = new THREE.Scene();
+    // A frame draws the scene four times, and nothing moves between them, so its matrices are worked out once a frame
+    // and not again for each draw.
+    scene.matrixWorldAutoUpdate = false;
     const camera = new THREE.PerspectiveCamera(26, 1, 2, 500);
     const cam = { x: 40, y: 40, dist: 92, yaw: Math.PI / 4, pitch: 0.98, shake: 0, minD: 30, maxD: 190 };
 
@@ -611,6 +614,7 @@ const World = (() => {
         // A look that paints the fog of war itself has the scene drawn without it.
         const own = style.sceneFog === false && viewTeam >= 0;
         if (own) SH.uFogOn.value = 0;
+        scene.updateMatrixWorld();
         renderer.setRenderTarget(rt);
         renderer.render(scene, camera);
         if (own) SH.uFogOn.value = 1;
@@ -670,7 +674,8 @@ const World = (() => {
         const flip = { [THREE.FrontSide]: THREE.BackSide, [THREE.BackSide]: THREE.FrontSide, [THREE.DoubleSide]: THREE.DoubleSide }, depths = new Map();
         const depth = o => {
           if (!o.castShadow) return null;
-          if (o.customDepthMaterial) return o.customDepthMaterial;
+          // The instanced casters' shared depth material takes each caster's settings as three.js's own does.
+          if (o.customDepthMaterial && o.customDepthMaterial !== instDepth) return o.customDepthMaterial;
           // The shared depth material takes the caster's side, map and alpha test, each of which makes its own program.
           const m = [].concat(o.material)[0], side = m.shadowSide != null ? m.shadowSide : flip[m.side];
           const map = m.map || null, alphaMap = m.alphaMap || null, displacementMap = m.displacementMap || null, alphaTest = m.alphaTest || 0;
@@ -5017,9 +5022,20 @@ const World = (() => {
     // `step` hears the share taken up so far. Resolves when all are, or after `limit` ms.
     // The programs that need no map, started without being waited on, for the driver to compile while one is made.
     const warm = () => pp.passes();
+    // Instanced casters draw their shadows' depth with a material of their own. three.js's one depth material, shared
+    // with the plain casters, otherwise looks up its program again at each change between the two, many times a frame.
+    // A caster whose shadow a map, alpha map, displacement or clipping cuts keeps three.js's own material for it.
+    const instDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+    function splitDepth() {
+      scene.traverse(o => {
+        const m = o.isInstancedMesh && o.castShadow && !o.customDepthMaterial && !Array.isArray(o.material) && o.material;
+        if (m && !m.map && !m.alphaMap && !m.displacementMap && !m.clipShadows) o.customDepthMaterial = instDepth;
+      });
+    }
     function prepare(limit = 120000, step = () => {}) {
       // The placement cells are made on the first frame otherwise.
       updateGhost();
+      splitDepth();
       pp.compile(); compileCameos();
       const ps = renderer.info.programs.slice(), t0 = performance.now();
       let i = 0;
@@ -5145,6 +5161,7 @@ const World = (() => {
       const hidden = [];
       scene.traverse(o => { if ((o.isMesh || o.isPoints) && !keep.has(o) && o.visible) { o.visible = false; hidden.push(o); } });
       scene.overrideMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+      scene.updateMatrixWorld();
       renderer.shadowMap.autoUpdate = false;
       renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, camera);
       const px = new Uint8Array(w * h * 4);
