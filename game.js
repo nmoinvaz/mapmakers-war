@@ -316,7 +316,9 @@ const Game = (() => {
     // sign of loading: its land pencilled and inked as the battle is made ready, and its units and buildings inked
     // once it is. Otherwise the battle shows when it has caught up, fading in over the paper the first time.
     const AHEAD = 20 * 60 * 4.5;
-    let ahead = null, ovDraw = false;
+    // dawnDue uncovers the view once its first frame is drawn, as its programs may still be compiling when the title
+    // shows, and an undrawn canvas is black.
+    let ahead = null, ovDraw = false, dawnDue = false;
     function attract() {
       const S = Rules.newGame({ seed: 40 + (Date.now() / 86400000 | 0) % 40 });
       S.ais.push(AI.create(0, 'veteran'), AI.create(1, 'veteran'));
@@ -327,7 +329,7 @@ const Game = (() => {
       world.focus(Rules.W / 2, Rules.H / 2, 110);
       world.drawIn(0, 0, 0);
       ovDraw = true; $('ov').style.opacity = '0';
-      requestAnimationFrame(() => requestAnimationFrame(() => $('view').classList.remove('dawn')));
+      dawnDue = true;
     }
     // The labels over the map come in as the last of the land is drawn.
     function drawOv() {
@@ -350,7 +352,7 @@ const Game = (() => {
       begin(S, 'desert', -1);
       S.ev.length = 0;
       world.focus(Rules.W / 2, Rules.H / 2, 110);
-      if (first) { requestAnimationFrame(() => $('view').classList.remove('dawn')); setTimeout(() => { cameoDue = true; }, 1200); }
+      if (first) { dawnDue = true; setTimeout(() => { cameoDue = true; }, 1200); }
     }
 
     // Into a game, local or online: the title goes and the view goes to the player's base.
@@ -669,6 +671,7 @@ const Game = (() => {
       attractAhead();
       if (cameoDue && !renders) cameos(3);
       if (S) world.frame(Math.min(1, acc / Rules.DT), G.paused ? 0 : dt, now / 1000);
+      if (S && dawnDue) { dawnDue = false; requestAnimationFrame(() => $('view').classList.remove('dawn')); }
       drawOv();
       // The sound is held exactly while a game stands paused, however it came to be paused or let go.
       audio.hold(G.playing && G.paused);
@@ -1469,12 +1472,10 @@ const Game = (() => {
       G.pictures = pictures;
       if (!restore()) { $('view').classList.add('dawn'); attract(); screen('main'); }
       loaded(0.84); await breathe();
-      // The programs the first frame draws with are compiled first, without holding the page, so a slow graphics card
-      // takes its time behind the loading bar and the page stays answering. A note says so if it is slow.
+      // The title is shown at once. The programs its map draws with are compiled behind it without holding the page,
+      // and the map is drawn in once they are, so a slow graphics card takes its time behind a menu that answers.
       fit(); applyFit();
-      const slowInk = setTimeout(() => { if (!document.body.classList.contains('ready')) $('loading-note').textContent = 'Inking the map. A slower graphics card takes a little while.'; }, 3000);
-      await world.prepare(120000, f => loaded(0.84 + 0.08 * f));
-      clearTimeout(slowInk);
+      if (!preparing) world.prepare();
       loaded(0.92); await breathe();
       if (store.get(ROOM, '') && !G.playing && /^https?:$/.test(location.protocol)) rejoining(true);
       $('callsign').value = G.name;

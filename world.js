@@ -5016,10 +5016,6 @@ const World = (() => {
       renderer.setRenderTarget(keep);
       t.dispose();
     }
-    // The programs started, then taken up one by one without holding the page, so a slow graphics driver is not taken
-    // for a hung page. Where the browser compiles aside, a program is taken up once it says it is linked, and costs
-    // nothing then. Elsewhere taking one up waits on its own compile only, and the page is let go before the next.
-    // `step` hears the share taken up so far. Resolves when all are, or after `limit` ms.
     // The programs that need no map, started without being waited on, for the driver to compile while one is made.
     const warm = () => pp.passes();
     // Instanced casters draw their shadows' depth with a material of their own. three.js's one depth material, shared
@@ -5032,19 +5028,27 @@ const World = (() => {
         if (m && !m.map && !m.alphaMap && !m.displacementMap && !m.clipShadows) o.customDepthMaterial = instDepth;
       });
     }
+    // The programs started, then taken up without holding the page, so a slow graphics driver is not taken for a hung
+    // page. Where the browser compiles aside, a program is taken up once it says it is linked, and costs nothing then.
+    // Elsewhere, as in Firefox, the driver compiles them in order behind a fence, which is asked after without
+    // waiting, and they are taken up once it has passed. `step` hears the share taken up so far. Resolves when all
+    // are, or after `limit` ms.
     function prepare(limit = 120000, step = () => {}) {
       // The placement cells are made on the first frame otherwise.
       updateGhost();
       splitDepth();
       pp.compile(); compileCameos();
-      const ps = renderer.info.programs.slice(), t0 = performance.now();
-      let i = 0;
+      const ps = renderer.info.programs.slice(), t0 = performance.now(), gl = renderer.getContext();
+      const aside = renderer.extensions.has('KHR_parallel_shader_compile');
+      let fence = !aside && gl.fenceSync ? gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0) : null, i = 0;
+      if (fence) gl.flush();
       return new Promise(done => {
         const tick = () => {
-          const t1 = performance.now();
-          while (i < ps.length && ps[i].isReady() && performance.now() - t1 < 8) ps[i++].getUniforms();
+          const t1 = performance.now(), late = t1 - t0 > limit;
+          if (fence && (late || gl.getSyncParameter(fence, gl.SYNC_STATUS) === gl.SIGNALED)) { gl.deleteSync(fence); fence = null; }
+          if (!fence) while (i < ps.length && ps[i].isReady() && performance.now() - t1 < 8) ps[i++].getUniforms();
           step(i / Math.max(1, ps.length));
-          if (i >= ps.length || performance.now() - t0 > limit) done(); else setTimeout(tick, 16);
+          if (i >= ps.length || late) done(); else setTimeout(tick, 16);
         };
         tick();
       });
