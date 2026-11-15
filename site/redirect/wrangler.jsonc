@@ -1,5 +1,6 @@
 // The worker that served the game as Dead Ground, now a permanent redirect to mapmakerswar.com. Deploy with
-// `npx wrangler deploy` in this folder. Its migrations are the old worker's own, unchanged.
+// `pnpm exec wrangler deploy --config site/redirect/wrangler.jsonc` from the repository's folder. Its migrations
+// are the old worker's own, unchanged.
 {
   "name": "dead-ground",
   "main": "index.js",

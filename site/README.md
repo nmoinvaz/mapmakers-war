@@ -13,6 +13,7 @@ and how hard, and the room plays out once everyone is ready.
 - `redirect/` is the worker that served the game as Dead Ground, at dead-ground.nathan-05a.workers.dev. It now sends
   every request on to mapmakerswar.com.
 
-Run locally with `npx wrangler dev`, deploy with `npx wrangler deploy`.
+From the repository's folder, build and run it locally with `pnpm run dev`, and build and deploy it with
+`pnpm run deploy`.
 
 x.com/nmnvzr · Opus 5.5

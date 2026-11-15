@@ -23,16 +23,19 @@ page.html      the page the game is built into
 server.js      the game rooms' server, a Cloudflare Worker with Durable Objects
 sfx.py         the synthesized sounds, into sfx/
 site/          the built site that is deployed, made by site.sh
+package.json   the build's tools, esbuild and wrangler, installed with pnpm
 ```
 
 ## Building
 
-The page is built with film-studio's `player/build.py`:
+The page is built with film-studio's `player/build.py`. The site's build minifies the page's scripts with esbuild
+and deploys with wrangler, both kept by pnpm, so run `pnpm install` once first:
 
 ```sh
 ~/Source/film-studio/.venv/bin/python ~/Source/film-studio/player/build.py game.json          # dist/index.html
-./site.sh                                                                                      # site/
-cd site && npx wrangler deploy
+pnpm run build                                                                                 # site/
+pnpm run dev                                                                                   # site/, served locally
+pnpm run deploy                                                                                # site/, deployed
 ```
 
 ## Checks

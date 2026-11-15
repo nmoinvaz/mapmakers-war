@@ -1,14 +1,21 @@
 #!/bin/sh
 # Builds the site: the page into site/public, and the rules, the commander and the server into site/server.
-# Then `npx wrangler dev` in site/ runs it locally, and `npx wrangler deploy` puts it up.
+# Then `pnpm run dev` runs it locally, and `pnpm run deploy` builds it and puts it up.
 set -e
 cd "$(dirname "$0")"
+# The page's scripts go in minified, all but the rules and the commander, which stay as written so the browsers
+# run the same source as the server. Without a module format esbuild keeps every top-level name, which the
+# page's scripts share.
+MINIFY=$(jq -r '.film.scripts[] | select(. != "rules.js" and . != "ai.js")' game.json)
+pnpm exec esbuild $MINIFY --minify --charset=utf8 --log-level=warning --outbase=. --outdir=.site-min
 # Every sound, the score, the spoken lines, the weather and the effects, is kept out of the page, as a file of its
 # own named by its contents, so the page loads quickly and a returning player's browser keeps the sounds across
-# deploys. The page is built from the game's manifest without them.
-jq '.sounds = {}' game.json > .site-game.json
+# deploys. The page is built from the game's manifest without them, and with the minified scripts.
+jq '.sounds = {} | .film.scripts |= map(if . == "rules.js" or . == "ai.js" then . else ".site-min/" + . end)' \
+  game.json > .site-game.json
 ~/Source/film-studio/.venv/bin/python ~/Source/film-studio/player/build.py .site-game.json --out site/public/index.html
 rm -f .site-game.json
+rm -rf .site-min
 mkdir -p site/public/audio
 rm -f site/public/audio/*.mp3
 FILES=""

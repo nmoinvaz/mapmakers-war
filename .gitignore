@@ -11,3 +11,4 @@ node_modules/
 music/takes/
 music/*.log
 .site-game.json
+.site-min/
