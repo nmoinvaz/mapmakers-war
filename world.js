@@ -689,7 +689,9 @@ const World = (() => {
         // hatched, and the scene's own lights otherwise.
         for (const mask of [main, 1 << 3]) at(rt, mask, standIns(scene, -1, depth));
         // The passes drawn over the scene on a layer of their own: the lines, the fire and smoke, the cast shadows.
-        for (const m of [markMat, normMat, anchorMat, linesMat].filter(Boolean)) at(rt, 1 << 1, standIns(scene, 1, () => m));
+        // The lines are one pass where the browser allows it, and the mask, normal and anchor passes it stands for
+        // are drawn only where it does not.
+        for (const m of linesMat ? [linesMat] : [markMat, normMat, anchorMat]) at(rt, 1 << 1, standIns(scene, 1, () => m));
         at(rt, 1 << 2, standIns(scene, 2, own));
         at(rt, 1 << 3, standIns(scene, 3, () => shadowMat));
         // The land alone, drawn as a scene of its own with no lights.
