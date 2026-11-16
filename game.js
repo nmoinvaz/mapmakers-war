@@ -295,13 +295,30 @@ const Game = (() => {
 
     // Set while a new map's programs are compiled, to the latest such compile.
     let preparing = 0;
+    // Returns how many programs the new map needs that were not made before.
     function begin(S, theme, team) {
       G.S = S; G.team = team;
+      const known = new Set(world.renderer.info.programs);
       world.load(S, theme, team);
       fit();
       // The new map's programs are compiled before it is drawn, without holding the page, as at loading.
       const n = ++preparing;
-      world.prepare(60000).then(() => { if (preparing === n) preparing = 0; });
+      world.prepare(60000, k => { if (preparing === n) deployShare(0.7 + 0.3 * k); }).then(() => { if (preparing === n) preparing = 0; });
+      return world.renderer.info.programs.filter(p => !known.has(p)).length;
+    }
+    // The Deploying card over a game being started, naming the step drawn before its work, until the game's first
+    // frame is drawn.
+    let undeployDue = false;
+    function deploying(step, k) {
+      document.body.classList.add('deploying');
+      undeployDue = true;
+      $('loading-word').textContent = 'DEPLOYING';
+      $('loading-step').textContent = step;
+      deployShare(k);
+    }
+    function deployShare(k) {
+      const i = document.querySelector('#loading .lbar i');
+      if (i && document.body.classList.contains('deploying')) i.style.transform = `scaleX(${k})`;
     }
     // The camera over a slot's own base, looking toward the middle of the map.
     function home(S, team, d = 92) {
@@ -365,7 +382,10 @@ const Game = (() => {
       $('view').classList.remove('dawn');
       // A game begun while the title's map is still being drawn in is shown whole at once.
       world.drawIn(1, 1, 1); ovDraw = false; $('ov').style.opacity = '';
-      begin(S, theme, team);
+      const fresh = begin(S, theme, team);
+      if (fresh || document.body.classList.contains('deploying')) {
+        deploying(fresh ? `Compiling ${fresh} shader${fresh === 1 ? '' : 's'} for the map` : 'Opening the map', 0.7);
+      }
       cameoDue = true; cameos(CAMEO_BATCH);
       pictures();
       hud.reset();
@@ -403,14 +423,20 @@ const Game = (() => {
     }
     const saveSk = () => store.set(SK, JSON.stringify(sk));
 
-    function startSkirmish() {
+    // Set while a skirmish is being made, before it is entered. The title's map is not drawn meanwhile.
+    let starting = false;
+    async function startSkirmish() {
       const m = Rules.MAPS[sk.map], seats = [], you = sk.slots.findIndex(s => s.kind === 'you');
       sk.slots.forEach((s, t) => { if (s.kind === 'you' || s.kind === 'ai') seats.push(t); });
-      if (seats.length < 2 || you < 0) return;
+      if (seats.length < 2 || you < 0 || starting) return;
+      starting = true;
+      deploying('Surveying the map', 0.15); await breathe();
       const S = Rules.newGame({ seed: params.has('seed') ? +params.get('seed') : sk.seed, layout: m.layout, seats, shuffle: Math.random, age: sk.age || 1, theatre: sk.theme, weather: sk.weather || 'random', free: sk.res === 'free', regicide: sk.win === 'regicide', koth: sk.win === 'koth' && !!m.koth });
       sk.slots.forEach((s, t) => { if (s.kind === 'ai') S.ais.push(AI.create(t, s.level, S.seed + t)); });
       G.names = sk.slots.map(s => s.kind === 'you' ? (G.name || 'You') : s.kind === 'ai' ? `Computer (${Rules.DIFFICULTY[s.level].name})` : '');
       G.theme = sk.theme; G.mapKey = sk.map; G.online = false;
+      deploying("Building the map's land and scenery", 0.4); await breathe();
+      starting = false;
       clearSave();
       enterPlay(S, G.theme, you);
       saveT = 0;
@@ -650,8 +676,8 @@ const Game = (() => {
       const t0 = performance.now(), dt = Math.min(0.1, (now - last) / 1000 || 0.016), gap = (now - last) / 1000;
       last = now;
       if (fitDue) applyFit();
-      // The game waits, undrawn, while a new map's programs are compiled.
-      if (preparing) return;
+      // The game waits, undrawn, while a new map's programs are compiled, and while a skirmish is being made.
+      if (preparing || starting) return;
       const S = G.S;
       if (S && G.online) {
         // Steps as they come from the server, keeping a step or two in hand, and catching up when behind.
@@ -676,6 +702,8 @@ const Game = (() => {
       if (cameoDue && !renders) cameos(3);
       if (S) world.frame(Math.min(1, acc / Rules.DT), G.paused ? 0 : dt, now / 1000);
       if (S && dawnDue) { dawnDue = false; requestAnimationFrame(() => $('view').classList.remove('dawn')); }
+      // The Deploying card goes once the game's first frame is drawn.
+      if (G.playing && undeployDue) { undeployDue = false; requestAnimationFrame(() => document.body.classList.remove('deploying')); }
       drawOv();
       // The sound is held exactly while a game stands paused, however it came to be paused or let go.
       audio.hold(G.playing && G.paused);
@@ -1451,7 +1479,8 @@ const Game = (() => {
 
     // The loading bar's share, never going back from where its own creeping has brought it, and the step it is on.
     function loaded(k, step) {
-      if (step) $('loading-step').textContent = step;
+      // A saved game taken up while loading names its own compile, which stays named.
+      if (step && !document.body.classList.contains('deploying')) $('loading-step').textContent = step;
       const bar = document.querySelector('#loading .lbar'), i = bar && bar.firstElementChild;
       if (!i) return;
       const m = getComputedStyle(i).transform.match(/matrix\(([^,]+)/), now = m ? +m[1] : 0;
