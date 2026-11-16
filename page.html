@@ -268,6 +268,9 @@ body[data-scheme="dark"] #loading { background: #1a1814; color: #e8e0d0; }
 #loading .lbar.known i { animation: none; }
 @keyframes lbar { from { transform: scaleX(0.02); } to { transform: scaleX(0.6); } }
 body[data-scheme="dark"] #loading .lbar { background: rgba(232,224,208,.16); }
+/* The step the load is on, close under the bar. It names the work that follows, as a long step holds the frame. */
+#loading-step { margin: -6px 0 0; min-height: 1.2em; font: 400 13px/1.2 "Jost", "Futura", "Trebuchet MS", sans-serif; letter-spacing: .06em; opacity: .62; text-align: center; }
+body.ready #loading-step, body.lost #loading-step { display: none; }
 #loading-note { margin: 0; min-height: 1.2em; font: italic 400 14px/1.3 Georgia, serif; letter-spacing: 0; text-transform: none; opacity: .8; text-align: center; max-width: 32ch; }
 
 #end { background: rgba(5,6,3,.76); align-items: center; justify-content: center; }
@@ -788,7 +791,7 @@ body[data-look="ink"] .sheet { box-shadow: 4px 4px 0 var(--ink); }
     <div class="row"><button id="resume">Resume</button><button id="quit">Quit to menu</button></div>
   </div>
 
-  <div id="loading"><span id="loading-word">DEPLOYING</span><div class="lbar"><i></i></div><p id="loading-note"></p></div>
+  <div id="loading"><span id="loading-word">DEPLOYING</span><div class="lbar"><i></i></div><p id="loading-step">Loading the scripts</p><p id="loading-note"></p></div>
   <script>
     // While the page loads: a load that fails, or stalls for long, says so on the loading card instead of waiting.
     (function () {
@@ -804,4 +807,8 @@ body[data-look="ink"] .sheet { box-shadow: 4px 4px 0 var(--ink); }
 // The sounds kept out of the page as files of their own, by name, which the site's build fills in.
 const SOUND_FILES = {/*@SOUND_FILES@*/};</script>
 <!--@SCRIPTS@-->
-<script>requestAnimationFrame(() => setTimeout(() => window.__FILM__.create().boot(), 20));</script>
+<script>
+// The step is named in the frame drawn before the work, which holds the page until it is done.
+document.getElementById('loading-step').textContent = 'Building the models';
+requestAnimationFrame(() => setTimeout(() => window.__FILM__.create().boot(), 20));
+</script>

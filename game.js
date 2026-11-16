@@ -319,9 +319,13 @@ const Game = (() => {
     // dawnDue uncovers the view once its first frame is drawn, as its programs may still be compiling when the title
     // shows, and an undrawn canvas is black.
     let ahead = null, ovDraw = false, dawnDue = false;
-    function attract() {
+    // The title's battle, a new one each day, made apart from its drawing so the loading card can name each.
+    function attractGame() {
       const S = Rules.newGame({ seed: 40 + (Date.now() / 86400000 | 0) % 40 });
       S.ais.push(AI.create(0, 'veteran'), AI.create(1, 'veteran'));
+      return S;
+    }
+    function attract(S = attractGame()) {
       ahead = { S, n: 0 };
       if (G.S || world.look !== 'ink') return;
       ahead.draw = true;
@@ -1445,8 +1449,9 @@ const Game = (() => {
       fit();
     }
 
-    // The loading bar's share, never going back from where its own creeping has brought it.
-    function loaded(k) {
+    // The loading bar's share, never going back from where its own creeping has brought it, and the step it is on.
+    function loaded(k, step) {
+      if (step) $('loading-step').textContent = step;
       const bar = document.querySelector('#loading .lbar'), i = bar && bar.firstElementChild;
       if (!i) return;
       const m = getComputedStyle(i).transform.match(/matrix\(([^,]+)/), now = m ? +m[1] : 0;
@@ -1455,13 +1460,17 @@ const Game = (() => {
     }
     // A moment for the page to draw the bar between the heavy steps of setting up.
     const breathe = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
+    // Each step is named before its work, as the frame that shows the name is the last drawn until the work is done.
     async function boot() {
-      loaded(0.62); await breathe();
+      loaded(0.62, "Compiling the screen's shaders"); await breathe();
       fit();
       applyScheme();
       // The programs that need no map are started now, for the graphics driver to compile while the map is made.
       applyFit(); world.warm();
-      loaded(0.7); await breathe();
+      // A driver that compiles in order holds the next frame until these programs are compiled. That frame is drawn
+      // under this step's name, so the wait is not shown as the next step's.
+      await breathe();
+      loaded(0.7, 'Surveying the map'); await breathe();
       cameoList = [
         ...Object.keys(Rules.BUILDINGS).filter(k => k !== 'hq').map(k => ({ kind: k, b: true })), { kind: 'hq', b: true },
         ...world.buildingKeys.filter(k => k.includes('@')).map(k => ({ kind: k, b: true })),
@@ -1470,8 +1479,12 @@ const Game = (() => {
         ...Object.keys(Rules.UNITS).filter(k => Rules.UNITS[k].men && !Axo.UNITS[k]).map(k => ({ kind: k, man: true })),
       ];
       G.pictures = pictures;
-      if (!restore()) { $('view').classList.add('dawn'); attract(); screen('main'); }
-      loaded(0.84); await breathe();
+      if (!restore()) {
+        const S = attractGame();
+        loaded(0.77, "Building the map's land and scenery"); await breathe();
+        $('view').classList.add('dawn'); attract(S); screen('main');
+      }
+      loaded(0.84, 'Opening the title'); await breathe();
       // The title is shown at once. The programs its map draws with are compiled behind it without holding the page,
       // and the map is drawn in once they are, so a slow graphics card takes its time behind a menu that answers.
       fit(); applyFit();
